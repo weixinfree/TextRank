@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 from collections import defaultdict
-from typing import List
+from typing import List, NamedTuple
 import operator
 
 VERBOSE = False
@@ -9,6 +9,11 @@ VERBOSE = False
 def verbose(*msg):
     if VERBOSE:
         print(*msg)
+
+
+class Edge(NamedTuple):
+    to_node: str
+    weight: float
 
 
 class SparseGraph:
@@ -20,11 +25,11 @@ class SparseGraph:
     def add_node(self, n):
         self.nodes.add(n)
 
-    def link(self, from_node, to_node):
-        self.add_node(from_node)
-        self.add_node(to_node)
-        self.link_out[from_node].add(to_node)
-        self.link_in[to_node].add(from_node)
+    def link(self, from_node, to_node, weight: float = 1.0):
+        self.nodes.add(from_node)
+        self.nodes.add(to_node)
+        self.link_out[from_node].add(Edge(to_node, weight))
+        self.link_in[to_node].add(Edge(from_node, weight))
 
     def __repr__(self):
         return f"SparseGraph(nodes={self.nodes}, link_out={self.link_out}, link_in={self.link_in})"
@@ -32,14 +37,14 @@ class SparseGraph:
     def page_rank(
         self,
         max_iteration: int = 10000,
-        convergence: float = 0.0001,
-        dampling_factor: float = 0.2,
+        tolerance: float = 0.0001,
+        dampling_factor: float = 0.85,
     ):
         """ 使用PageRank算法计算节点在网络中的重要程度
         
-        Args:
+        params:
             max_iteratioin: int 最大迭代次数
-            convergence: float (0 - 1) 收敛判据
+            tolerance: float (0 - 1) 收敛判据
             dampling_factor: float (0 - 1) 阻尼系数，（随机迁移概率）
         """
         nodes = self.nodes
@@ -49,17 +54,17 @@ class SparseGraph:
 
         verbose(f"initial pr: {pr}")
 
-        tax = dampling_factor * init_val
+        tax = (1 - dampling_factor) * init_val
 
         def iter_compute_new_pr(pr):
             new_pr = {}
             for v in pr.keys():
                 t = 0.0
-                for node in self.link_in.get(v, []):
-                    t += 1.0 / len(self.link_out[node]) + pr[node]
-                new_pr[v] = t * (1 - dampling_factor)
-            for v in new_pr.keys():
-                new_pr[v] += tax
+                for node, weight in self.link_in.get(v, []):
+                    out_edges = self.link_out[node]
+                    denominator = sum(e.weight for e in out_edges)
+                    t +=  weight * pr[node] / denominator
+                new_pr[v] = t * dampling_factor + tax
 
             return new_pr
 
@@ -72,7 +77,7 @@ class SparseGraph:
         diff: float = 1.0
         # 循环次数
         i: int = 0
-        while i < max_iteration and diff > convergence:
+        while i < max_iteration and diff > tolerance:
             _pr = iter_compute_new_pr(pr)
             diff = compute_diff(_pr, pr)
             verbose(f"{i}. {_pr} {diff * 100:.2f}%")
@@ -88,6 +93,8 @@ if __name__ == "__main__":
     g.link(1, 2)
     g.link(2, 4)
     g.link(2, 3)
+    g.link(5, 2)
+    g.link(5, 1)
 
     VERBOSE = True
 
